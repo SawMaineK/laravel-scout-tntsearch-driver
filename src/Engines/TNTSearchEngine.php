@@ -109,7 +109,6 @@ class TNTSearchEngine extends Engine
     public function paginate(Builder $builder, $perPage, $page)
     {
         $results = $this->performSearch($builder);
-
         if ($builder->limit) {
             $results['hits'] = $builder->limit;
         }
@@ -117,6 +116,8 @@ class TNTSearchEngine extends Engine
         $filtered = $this->discardIdsFromResultSetByConstraints($builder, $results['ids']);
 
         $results['hits'] = $filtered->count();
+        $results['perPage'] = $perPage;
+        $results['page'] = $page;
 
         $chunks = array_chunk($filtered->toArray(), $perPage);
 
@@ -129,7 +130,6 @@ class TNTSearchEngine extends Engine
         } else {
             $results['ids'] = [];
         }
-
         return $results;
     }
 
@@ -188,18 +188,22 @@ class TNTSearchEngine extends Engine
         if ($this->builder->queryCallback) {
             call_user_func($this->builder->queryCallback, $builder);
         }
-
-        $models = $builder->whereIn(
-            $model->getQualifiedKeyName(), $keys
-        )->get()->keyBy($model->getKeyName());
-
+        if($this->builder->query) {
+            $models = $builder->whereIn(
+                $model->getQualifiedKeyName(),
+                $keys
+            )->get()->keyBy($model->getKeyName());
+        } else {
+            $models = $builder->offset(($results['page'] - 1) * $results['perPage'])
+                                    ->limit($results['perPage'])->get()->keyBy($model->getKeyName());
+        }
+        
         // sort models by user choice
         if (!empty($this->builder->orders)) {
             return $models->values();
         }
-
         // sort models by tnt search result set
-        return $model->newCollection($results['ids'])->map(function ($hit) use ($models) {
+        return collect($results['ids'])->map(function ($hit) use ($models) {
             if (isset($models[$hit])) {
                 return $models[$hit];
             }
@@ -220,7 +224,6 @@ class TNTSearchEngine extends Engine
         $builder = isset($this->builder->constraints) ? $this->builder->constraints : $model->newQuery();
 
         $builder = $this->handleSoftDeletes($builder, $model);
-
         $builder = $this->applyWheres($builder);
 
         $builder = $this->applyOrders($builder);
@@ -282,20 +285,26 @@ class TNTSearchEngine extends Engine
         $qualifiedKeyName    = $builder->model->getQualifiedKeyName(); // tableName.id
         $subQualifiedKeyName = 'sub.'.$builder->model->getKeyName(); // sub.id
 
-        $sub = $this->getBuilder($builder->model)->whereIn(
-            $qualifiedKeyName, $searchResults
-        ); // sub query for left join
+        if($builder->query) {
+            $sub = $this->getBuilder($builder->model)->whereIn(
+                $qualifiedKeyName, $searchResults
+            ); // sub query for left join
 
-        $discardIds = $builder->model->newQuery()
-            ->select($qualifiedKeyName)
-            ->leftJoin(DB::raw('('.$sub->getQuery()->toSql().') as '. $builder->model->getConnection()->getTablePrefix() .'sub'), $subQualifiedKeyName, '=', $qualifiedKeyName)
-            ->addBinding($sub->getQuery()->getBindings(), 'join')
-            ->whereIn($qualifiedKeyName, $searchResults)
-            ->whereNull($subQualifiedKeyName)
-            ->pluck($builder->model->getKeyName());
-
-        // returns values of $results['ids'] that are not part of $discardIds
-        return collect($searchResults)->diff($discardIds);
+            $discardIds = $builder->model->newQuery()
+                ->select($qualifiedKeyName)
+                ->leftJoin(DB::raw('('.$sub->getQuery()->toSql().') as '. $builder->model->getConnection()->getTablePrefix() .'sub'), $subQualifiedKeyName, '=', $qualifiedKeyName)
+                ->addBinding($sub->getQuery()->getBindings(), 'join')
+                ->whereIn($qualifiedKeyName, $searchResults)
+                ->whereNull($subQualifiedKeyName)
+                ->pluck($builder->model->getKeyName());
+    
+            // returns values of $results['ids'] that are not part of $discardIds
+            return collect($searchResults)->diff($discardIds);
+        } else {
+            $discardIds = $builder->model->newQuery()
+                ->pluck($builder->model->getKeyName());
+            return collect($discardIds);
+        }
     }
 
     /**
@@ -365,6 +374,11 @@ class TNTSearchEngine extends Engine
         })->reduce(function ($builder, $where) {
             // separate key, value again
             list($key, $value) = $where;
+            $keys = explode(' ', $key);
+            if(count($keys) > 1) {
+                list($key, $operator) = $keys;
+                return $builder->where($key, $operator, $value);
+            }
             return $builder->where($key, $value);
         }, $builder);
     }
