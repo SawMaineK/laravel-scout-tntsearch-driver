@@ -26,7 +26,7 @@ This package makes it easy to add full text search support to your models with L
 You can install the package via composer:
 
 ``` bash
-composer require teamtnt/laravel-scout-tntsearch-driver
+composer require sawmainek/laravel-scout-tntsearch-driver
 ```
 
 Add the service provider:
