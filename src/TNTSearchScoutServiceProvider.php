@@ -5,7 +5,9 @@ use TeamTNT\TNTSearch\TNTSearch;
 use Laravel\Scout\EngineManager;
 use Laravel\Scout\Builder;
 use Illuminate\Support\ServiceProvider;
-use TeamTNT\Scout\Console\ImportCommand;
+use Laravel\Scout\Console\FlushCommand;
+use Laravel\Scout\Console\ImportCommand;
+use TeamTNT\Scout\Console\ImportCommand as TNTImportCommand;
 use TeamTNT\Scout\Engines\TNTSearchEngine;
 
 class TNTSearchScoutServiceProvider extends ServiceProvider
@@ -32,12 +34,12 @@ class TNTSearchScoutServiceProvider extends ServiceProvider
             return new TNTSearchEngine($tnt);
         });
 
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                ImportCommand::class,
-                StatusCommand::class
-            ]);
-        }
+        $this->commands([
+            ImportCommand::class,
+            FlushCommand::class,
+            TNTImportCommand::class,
+            StatusCommand::class,
+        ]);
 
         Builder::macro('constrain', function($constraints) {
             $this->constraints = $constraints;
