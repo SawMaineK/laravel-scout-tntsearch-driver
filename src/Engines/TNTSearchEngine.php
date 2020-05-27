@@ -177,25 +177,32 @@ class TNTSearchEngine extends Engine
      */
     public function map(Builder $builder, $results, $model)
     {
-        if (is_null($results['ids']) || count($results['ids']) === 0) {
-            return Collection::make();
-        }
-
-        $keys = collect($results['ids'])->values()->all();
-
         $builder = $this->getBuilder($model);
-
-        if ($this->builder->queryCallback) {
-            call_user_func($this->builder->queryCallback, $builder);
-        }
+        
         if($this->builder->query) {
+
+            if (is_null($results['ids']) || count($results['ids']) === 0) {
+                return Collection::make();
+            }
+    
+            $keys = collect($results['ids'])->values()->all();
+    
+            
+    
+            if ($this->builder->queryCallback) {
+                call_user_func($this->builder->queryCallback, $builder);
+            }
+
             $models = $builder->whereIn(
                 $model->getQualifiedKeyName(),
                 $keys
             )->get()->keyBy($model->getKeyName());
+
         } else {
+
             $models = $builder->offset(($results['page'] - 1) * $results['perPage'])
                                     ->limit($results['perPage'])->get()->keyBy($model->getKeyName());
+
         }
         
         // sort models by user choice
@@ -301,9 +308,7 @@ class TNTSearchEngine extends Engine
             // returns values of $results['ids'] that are not part of $discardIds
             return collect($searchResults)->diff($discardIds);
         } else {
-            $discardIds = $builder->model->newQuery()
-                ->pluck($builder->model->getKeyName());
-            return collect($discardIds);
+            return collect([]);
         }
     }
 
